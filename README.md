@@ -43,15 +43,3 @@ python codes/cosattack.py
   year={2025}
 }
 ```
-
-=======
-
-# [IJCAI'2025] Preventing Latent Diffusion Model-Based Image Mimicry via Angle Shifting and Ensemble Learning.
-
->>>>>>> 800a8b8c4732f45e2da04cf568c54fd65cb09986
->>>>>>>
->>>>>>
->>>>>
->>>>
->>>
->>
