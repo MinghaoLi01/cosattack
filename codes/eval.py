@@ -51,13 +51,11 @@ def SRexp(img_path, output_path,clean_path,xlsxname):
     save_score(scores,f'{xlsxname}.xlsx')  
     return scores
 
-def SDEexp(img_path = None, output_path = None,clean_path = None, xlsxname = None):
+def SDEexp(img_path = None, output_path = None,clean_path = None, xlsxname = None, path=None,config=None):
     
     device = 0
-    ckpt = "ckpt/sd-v1-4.ckpt"
-    dm_config = "configs/stable-diffusion/v1-inference-sd1-4.yaml"
-    dm_config = OmegaConf.load(dm_config)
-    dm = load_model_from_config(config=dm_config, ckpt=ckpt, device=device).to(device)
+    dm_config = OmegaConf.load(config)
+    dm = load_model_from_config(config=dm_config, ckpt=path, device=device).to(device)
     editor = SDEdit(dm=dm)
     input_size =  512
 
@@ -102,7 +100,7 @@ def evaluate(imgClean,imgGen):
 def eval_dataset(dir_clean,dir_gen):
     imgs_g =  glob.glob(dir_gen+"*.jpg")
     fid = calculate_fid_given_paths([dir_clean,dir_gen],device=0,dims=2048,batch_size=64)
-    res = np.array([0.0,0.0,0.0,0.0])
+    res = np.array([0.0,0.0,0.0])
     l = len(imgs_g)
     for i in tqdm(imgs_g):
         f_g = i.split("/")[-1].split('.')[0]

@@ -28,12 +28,8 @@ def measure_time_and_memory(func):
 
     return wrapper
 
-def get_dm():
+def get_dm(ckpt="ckpt/sd-v1-4.ckpt",dm_config="configs/stable-diffusion/v1-inference-sd1-4.yaml"):
     device = 0
-    ckpt = "ckpt/sd-v1-4.ckpt"
-    dm_config = "configs/stable-diffusion/v1-inference-sd1-4.yaml"
-    # ckpt = "ckpt/sd-v1-4.ckpt"
-    # dm_config = "configs/stable-diffusion/v1-inference-sd1-4.yaml"
     dm_config = OmegaConf.load(dm_config)
     dm = load_model_from_config(config=dm_config, ckpt=ckpt, device=device).to(device)
     return dm
@@ -84,8 +80,8 @@ def getXadv(x_raw,x_adv,z_grad,stepsize,steps,eps,dm):
     return x_adv
 
 def attack(steps=1, Estepsize=1/255.0, Esteps=100, Eeps=8/255.0,device=0,
-             img_path = "test_images/to_protect/",output_path = "out/cos/",target=None,input_size = 512):
-    dm = get_dm()
+             img_path = "test_images/to_protect/",output_path = "out/cos/",target=None,input_size = 512,path=None,config=None):
+    dm = get_dm(path,config)
     T = dm.num_timesteps
     imgs = glob.glob(img_path+"*")
     trans = transforms.Compose([transforms.ToTensor()])
@@ -104,7 +100,6 @@ def attack(steps=1, Estepsize=1/255.0, Esteps=100, Eeps=8/255.0,device=0,
         target_z = None
     for i in tqdm(imgs[:]):
         img_name = i.split("/")[-1].split('.')[0]
-
         img = load_image_from_path(i, input_size)
         img = img.convert('RGB')
         img = np.array(img).astype(np.float32) / 127.5 - 1.0
@@ -136,15 +131,24 @@ def main(args):
     exp_name = args.exp_name
     clean_pth = args.clean_path
     output_path = args.output_path
-
-    # 调用 attack
+    Eeps = args.Eeps
+    Estepsize = args.Estepsize
+    model_path = args.model_path
+    model_config = args.mdoel_config
+    sde_model_path = args.sdedit_model_path
+    sde_model_config = args.sdedit_model_config
+    # Angle-shifting Attack
     output = attack(
         steps=args.steps,
         Esteps=args.Esteps,
         img_path=clean_pth,
         output_path=f"exp/out/{output_path}/" + exp_name  + "/",
         target=target,
-        input_size=args.input_size
+        input_size=args.input_size,
+        Eeps=Eeps,
+        Estepsize=Estepsize,
+        config=model_config,
+        path=model_path
     )
     # SDEdit
     # output = f"exp/out/{output_path}/" + exp_name  + "/x_adv/"
@@ -152,7 +156,9 @@ def main(args):
         img_path=output,
         output_path=f"exp/sde/{output_path}/" + exp_name + "/",
         clean_path=clean_pth,
-        xlsxname=f"exp/sde/{output_path}/{output_path}_{exp_name}"
+        xlsxname=f"exp/sde/{output_path}/{output_path}_{exp_name}",
+        path=sde_model_path,
+        config=sde_model_config
     )
 
 
@@ -162,8 +168,14 @@ if __name__ == "__main__":
     parser.add_argument("--clean_path", type=str, default="images/clean/", help="clean image path")
     parser.add_argument("--output_path", type=str, default="cos_20_5", help="output folder name")
     parser.add_argument("--exp_name", type=str, default="TEST", help="experiment name")
-    parser.add_argument("--Esteps", type=int, default=20, help="steps for attack encoder")
-    parser.add_argument("--steps", type=int, default=5, help="steps for attack denoiser")
+    parser.add_argument("--Esteps", type=int, default=20, help="steps for attacking encoder")
+    parser.add_argument("--steps", type=int, default=5, help="steps for attacking denoiser")
     parser.add_argument("--input_size", type=int, default=512, help="input size")
+    parser.add_argument("--Eeps", type=float, default=8/255.0, help="max perturbation for attacking encoder")
+    parser.add_argument("--Estepsize", type=float, default=1/255.0, help="step size for attacking encoder")
+    parser.add_argument("--model_path", type=str, default="ckpt/sd-v1-4.ckpt", help="diffusion model")
+    parser.add_argument("--mdoel_config", type=str, default="configs/stable-diffusion/v1-inference-sd1-4.yaml", help="diffusion model config")
+    parser.add_argument("--sdedit_model_path", type=str, default="ckpt/sd-v1-4.ckpt", help="sdedit model")
+    parser.add_argument("--sdedit_model_config", type=str, default="configs/stable-diffusion/v1-inference-sd1-4.yaml", help="sdedit model config")
     args = parser.parse_args()
     main(args)

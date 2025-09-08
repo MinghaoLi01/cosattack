@@ -12,7 +12,7 @@ pip install -e git+https://github.com/openai/CLIP.git@main#egg=clip
 pip install --force-reinstall pillow
 ```
 
-If you encounter the error `ERROR: Command errored out with exit status 128` when installing `taming-transformers` or  `clip`, you can resolve it by manually cloning and installing the repository (Make sure your network is connected to GitHub properly).
+If you encounter the error `ERROR: Command errored out with exit status 128` when installing `taming-transformers` or  `clip`, you can resolve it by manually cloning and installing the repository (Make sure your network can connect to GitHub properly).
 
 ```
 git clone https://github.com/CompVis/taming-transformers.git
@@ -26,6 +26,11 @@ cd ..
 * [stable diffusion 1.4](https://huggingface.co/CompVis/stable-diffusion-v-1-4-original/tree/main)
 * [stable diffusion 1.5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main)
 * [stable diffusion 2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main)
+
+Set the paths for the models and configurations using the following parameters:
+
+* Surrogate model: `--model_path` `--model_config`
+* Inference model: `--sdedit_model_path` `--sdedit_model_config`
 
 ## Run
 
