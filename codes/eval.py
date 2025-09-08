@@ -13,7 +13,7 @@ from attacks import SDEdit
 import glob
 import ipywidgets as widgets
 from notebook_helpers import get_model, get_custom_cond, get_cond_options, get_cond, run
-from utils import mp, si, cprint, norm01,tensor2img,psnr_,clip_sim,ssim_,lpips_,load_png,save_score,load_model_from_config,load_image_from_path
+from utils import mp, si, cprint, norm01,tensor2img,psnr_,ssim_,lpips_,load_png,save_score,load_model_from_config,load_image_from_path
 from PIL import Image
 from diff_mist import LDMAttack
 import matplotlib.pyplot as plt
@@ -91,16 +91,13 @@ def SDEexp(img_path = None, output_path = None,clean_path = None, xlsxname = Non
     return output_path
 
 def evaluate(imgClean,imgGen):
-
-    clip_score = clip_sim(imgGen, imgClean)
-
     ssim = ssim_(imgGen , imgClean)
     # lpips_x = lpips_(x, x_adv)
     psnr = psnr_(imgGen , imgClean)
 
     lpips_score = lpips_fn(load_png(imgGen , None),load_png(imgClean,None))
     lpips = lpips_score[0, 0, 0, 0].cpu().tolist()
-    return [clip_score,lpips,ssim,psnr]
+    return [lpips,ssim,psnr]
 
 def eval_dataset(dir_clean,dir_gen):
     imgs_g =  glob.glob(dir_gen+"*.jpg")

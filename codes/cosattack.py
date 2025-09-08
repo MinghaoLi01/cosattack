@@ -6,14 +6,14 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-
+from eval import SDEexp,SRexp
 import glob
 from utils import tensor2img,load_image_from_path,load_model_from_config
 from diff_mist import LDMAttack
 import random
 import torch.cuda as cuda
 import time
-
+import argparse
 def measure_time_and_memory(func):
     def wrapper(*args, **kwargs):
         cuda.reset_peak_memory_stats()
@@ -40,7 +40,6 @@ def get_dm():
 
 def getTargetZ(zadv,zraw,dm,steps=100,c="",targetz=None,noise = None,tlst=None): 
     cnd = dm.get_learned_conditioning(c)
-    T = dm.num_timesteps
     z_raw = zraw.clone().detach()
     z_adv= zadv.clone().detach()
     gs = torch.zeros_like(z_raw)
@@ -60,8 +59,11 @@ def getTargetZ(zadv,zraw,dm,steps=100,c="",targetz=None,noise = None,tlst=None):
         if targetz!=None:
             loss = 1 - nn.MSELoss(reduction="sum")(z_adv,targetz) - 50 * torch.cosine_similarity(eps_pred.flatten(),noise_.flatten(),dim=0) 
         else:
-            loss = 1 - torch.cosine_similarity(eps_pred.flatten(),noise_.flatten(),dim=0)    
+            loss = 1 - torch.cosine_similarity(eps_pred.flatten(),noise_.flatten(),dim=0)  
+
+        # AdvDM Loss  
         # loss = torch.nn.functional.mse_loss(eps_pred, noise, reduction='none').mean([1, 2, 3]) 
+
         grad = torch.autograd.grad(loss,z_adv)[0]
         gs += grad / grad.std()
         z_adv.grad = None  
@@ -82,7 +84,7 @@ def getXadv(x_raw,x_adv,z_grad,stepsize,steps,eps,dm):
     return x_adv
 
 def attack(steps=1, Estepsize=1/255.0, Esteps=100, Eeps=8/255.0,device=0,
-             img_path = "test_images/to_protect/",output_path = "out/DeAttack/argmax_noise-eps/",target=None,input_size = 512):
+             img_path = "test_images/to_protect/",output_path = "out/cos/",target=None,input_size = 512):
     dm = get_dm()
     T = dm.num_timesteps
     imgs = glob.glob(img_path+"*")
@@ -111,7 +113,6 @@ def attack(steps=1, Estepsize=1/255.0, Esteps=100, Eeps=8/255.0,device=0,
         x[0] = trans(img).to(device)
         x_raw = x.clone().detach()
         x_adv = x.clone().detach()
-        # tensor2img(x_raw,img_path[:-1]+f"_resized/{img_name}.jpg")
         
         with torch.no_grad():
             z_raw = dm.get_first_stage_encoding(dm.encode_first_stage(x_raw)).to(device)
@@ -120,117 +121,49 @@ def attack(steps=1, Estepsize=1/255.0, Esteps=100, Eeps=8/255.0,device=0,
         tlst = torch.tensor(sorted(random.sample(range(0,T),100)))
         tlst = tlst.reshape(steps,Esteps).t().tolist()
         tlst.reverse()
-        for _ in range(Esteps):
-            tlst_ = tlst[_]
+        # print("GROUP:",tlst)
+        for tlst_z in tlst:
             with torch.no_grad():
                 z = dm.get_first_stage_encoding(dm.encode_first_stage(x_adv)).to(device)  
-            z_grad = getTargetZ(z,z_raw,dm,steps,c,target_z,noise,tlst=tlst_)
+            z_grad = getTargetZ(z,z_raw,dm,steps,c,target_z,noise,tlst=tlst_z)
             x_adv = getXadv(x_raw,x_adv,z_grad=z_grad,stepsize=Estepsize*2,steps=steps,eps=Eeps*2,dm=dm)
         tensor2img(x_adv,output_path+f"/x_adv/{img_name}.jpg")
     return output_path+"x_adv/"
 
 @measure_time_and_memory
-def main():
-    target = "test_images/target/MIST.png"
+def main(args):
+    target = args.target
+    exp_name = args.exp_name
+    clean_pth = args.clean_path
+    output_path = args.output_path
 
-    # exp_name = 'celebaHQ_SR/'
-    # imgGT = '/home/dx/lmh/dataset/celebaHQ_64/'
-    # clean_pth = '/home/dx/lmh/dataset/celebaHQ_256/'
-    # scorefile = exp_name[:-1]
-
-    # exp_name = "wikiart/"
-    # imgGT = '/home/dx/lmh/dataset/wikiart_resized/'
-    # clean_pth = imgGT
-    # scorefile = exp_name[:-1]
-
-    exp_name = 'celebaHQ/'
-    imgGT = '/home/dx/lmh/dataset/celebaHQ_resized/'
-    clean_pth = imgGT
-    scorefile = exp_name[:-1]
-
-    exp_name = 'vram'
-    imgGT = 'test_images/test_all/'
-    clean_pth = imgGT
-    scorefile = exp_name[:-1]
-
-
-    # exp_name = "wikiartSR/"
-    # imgGT = '/home/dx/lmh/dataset/wikiart_64/'
-    # clean_pth = '/home/dx/lmh/dataset/wikiart_256/'
-    # scorefile = exp_name[:-1]
+    # 调用 attack
+    output = attack(
+        steps=args.steps,
+        Esteps=args.Esteps,
+        img_path=clean_pth,
+        output_path=f"exp/out/{output_path}/" + exp_name  + "/",
+        target=target,
+        input_size=args.input_size
+    )
+    # SDEdit
+    # output = f"exp/out/{output_path}/" + exp_name  + "/x_adv/"
+    SDEexp(
+        img_path=output,
+        output_path=f"exp/sde/{output_path}/" + exp_name + "/",
+        clean_path=clean_pth,
+        xlsxname=f"exp/sde/{output_path}/{output_path}_{exp_name}"
+    )
 
 
-    # outpath = f"cos_20_5"
-    # output = attack(tp=-1,output_path= f"exp/sr/{outpath}/"+exp_name,img_path=imgGT,Esteps=20,target=target,steps=5,input_size=64)
-    # output = f"exp/sr/{outpath}/"+exp_name+"x_adv/" 
-    # SRexp(img_path = output, output_path = f"exp/sr/{outpath}/"+exp_name+"x_hat/",clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}") 
-    # exp_name = 'imagenet/'
-    # imgGT = '/home/dx/lmh/dataset/imagenet500/'
-    # clean_pth = imgGT
-    # scorefile = exp_name[:-1]
-
-    # outpath = f"cos_vram"
-    # output = attack(tp=-1,output_path= f"exp/out/{outpath}/"+exp_name,img_path=imgGT,Esteps=20,target=None,steps=5)
-    # output = f"exp/out/{outpath}/"+exp_name+"x_adv/" 
-    # SDEexp(img_path = output, output_path = f"exp/sde/vram/{outpath}/"+exp_name,clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}vram")
-    
-    # outpath = f"nopro_vram"
-    # output = imgGT
-    # SDEexp(img_path = output, output_path = f"exp/sde/vram/{outpath}/"+exp_name,clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}")
-
-    outpath = f"advdm_vram"
-    output = LDMAttack(mode='advdm',img_path=clean_pth,output_path=f"exp/out/{outpath}/"+exp_name,g_mode='+',block_num=1)
-    output = f"exp/out/{outpath}/"+exp_name
-    # SDEexp(img_path = output, output_path = f"exp/sde/vram/{outpath}/"+exp_name,clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}vram")
-    
-    
-    # outpath = f"sds_vram"
-    # output = LDMAttack(mode='sds',img_path=clean_pth,output_path=f"exp/out/{outpath}/"+exp_name,g_mode='-',using_target=True)
-    # output = f"exp/out/{outpath}/"+exp_name
-    # SDEexp(img_path = output, output_path = f"exp/sde/vram/{outpath}/"+exp_name,clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}vram")
-    
-    # outpath = f"mist_vram"
-    # output = LDMAttack(mode='mist',img_path=clean_pth,output_path=f"exp/out/{outpath}/"+exp_name,g_mode='+',using_target=True)    
-    # output = f"exp/out/{outpath}/"+exp_name
-    # SDEexp(img_path = output, output_path = f"exp/sde/vram/{outpath}/"+exp_name,clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}vram")
-    
-    # outpath = f"texture_only_vram"
-    # output = LDMAttack(mode='texture_only',img_path=clean_pth,output_path=f"exp/out/{outpath}/"+exp_name,g_mode='+',using_target=True)
-    # output = f"exp/out/{outpath}/"+exp_name
-    # SDEexp(img_path = output, output_path = f"exp/sde/vram/{outpath}/"+exp_name,clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}vram")
-
-    return   
-
-
-
-if __name__ == '__main__':
-    main()
-
-    # outpath = f"mist"
-    # output = LDMAttack(mode='mist',img_path=clean_pth,output_path=f"exp/sr/{outpath}/"+exp_name,g_mode='+',input_size=64)
-    # output = f"exp/sr/{outpath}/"+exp_name
-    # SRexp(img_path = output, output_path = f"exp/sr/{outpath}/"+exp_name+"x_hat/",clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}") 
-
-    # outpath = f"texture_only"
-    # output = LDMAttack(mode='texture_only',img_path=clean_pth,output_path=f"exp/sr/{outpath}/"+exp_name,g_mode='+',input_size=64)
-    # output = f"exp/sr/{outpath}/"+exp_name
-    # SRexp(img_path = output, output_path = f"exp/sr/{outpath}/"+exp_name+"x_hat/",clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}") 
-
-    # outpath = f"sds"
-    # output = LDMAttack(mode='sds',img_path=clean_pth,output_path=f"exp/sr/{outpath}/"+exp_name,g_mode='+',input_size=64)
-    # output = f"exp/sr/{outpath}/"+exp_name
-    # SRexp(img_path = output, output_path = f"exp/sr/{outpath}/"+exp_name+"x_hat/",clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}") 
-
-    # outpath = f"advdm"
-    # output = LDMAttack(mode='advdm',img_path=clean_pth,output_path=f"exp/sr/{outpath}/"+exp_name,g_mode='+',input_size=64)
-    # output = f"exp/sr/{outpath}/"+exp_name
-    # SRexp(img_path = output, output_path = f"exp/sr/{outpath}/"+exp_name+"x_hat/",clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}")
-
-  
-    # outpath = f"cos_20_5"
-    # output = attack(tp=-1,output_path= f"exp/sr/{outpath}/"+exp_name,img_path=imgGT,Esteps=20,target=None,steps=5,input_size=64)
-    # output = f"exp/sr/{outpath}/"+exp_name+"x_adv/" 
-    # SRexp(img_path = output, output_path = f"exp/sr/{outpath}/"+exp_name+"x_hat/",clean_path=clean_pth,xlsxname=f"{scorefile}_{outpath}") 
- 
-
-    pass
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run attack and experiments")
+    parser.add_argument("--target", type=str, default=None, help="target image path")
+    parser.add_argument("--clean_path", type=str, default="images/clean/", help="clean image path")
+    parser.add_argument("--output_path", type=str, default="cos_20_5", help="output folder name")
+    parser.add_argument("--exp_name", type=str, default="TEST", help="experiment name")
+    parser.add_argument("--Esteps", type=int, default=20, help="steps for attack encoder")
+    parser.add_argument("--steps", type=int, default=5, help="steps for attack denoiser")
+    parser.add_argument("--input_size", type=int, default=512, help="input size")
+    args = parser.parse_args()
+    main(args)

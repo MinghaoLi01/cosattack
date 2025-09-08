@@ -1,0 +1,8 @@
+CLIP/
+taming-transformers/
+src/
+.vscode/
+__pycache__/
+ckpt/
+hub/
+exp/

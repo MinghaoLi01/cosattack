@@ -8,7 +8,6 @@ from PIL import Image
 import glob
 import cv2
 from skimage.metrics import structural_similarity as ssim
-from clip_similarity import clip_sim
 import lpips
 import pandas as pd
 from ldm.util import instantiate_from_config
